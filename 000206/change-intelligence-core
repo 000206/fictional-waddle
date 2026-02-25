@@ -1,0 +1,175 @@
+import time
+
+class ChangeIntelligenceCore:
+    """
+    全闭环可交互通用智能内核
+    核心公理：世界本质是连续变化（无常），智能 = 感知变化 + 预测变化 + 适应变化 + 表达变化
+    开源社区：共同打造工业级通用自治系统
+    """
+    def __init__(
+        self,
+        decay=0.3,
+        change_threshold=0.05,
+        targets=None,
+        memory_size=5,
+        smooth_window=3,
+        trend_window=4,
+        steady_lock_window=6,
+        steady_change_threshold=0.1,
+        explore_rate=0.3,
+        max_explore_step=0.2,
+        agent_id=0,
+        responsible_dims=None
+    ):
+        # 基础核心
+        self.agent_id = agent_id
+        self.responsible_dims = responsible_dims or []
+        self.prev_state = None
+        self.decay = decay
+        self.last_deltas = {}
+        self.change_threshold = change_threshold
+        self.manual_targets = targets or {}
+
+        # Level1 变化记忆
+        self.memory_size = memory_size
+        self.change_history = []
+
+        # Level2 平滑滤波
+        self.smooth_window = smooth_window
+        self.state_history = []
+
+        # Level4 因果感知
+        self.last_action = None
+        self.last_action_type = None
+
+        # Level5 趋势与规律记忆
+        self.trend_window = trend_window
+        self.delta_history = {}
+
+        # Level6 自主稳态
+        self.steady_lock_window = steady_lock_window
+        self.steady_change_threshold = steady_change_threshold
+        self.auto_steady_target = None
+        self.is_steady_locked = False
+        self.steady_candidate_count = 0
+
+        # Level7 主动探索与世界模型
+        self.explore_rate = explore_rate
+        self.max_explore_step = max_explore_step
+        self.world_model = {
+            "dim_range": {},
+            "controllability": {},
+            "action_effect": {}
+        }
+        self.explore_target = None
+        self.consecutive_steady_step = 0
+
+        # Level9 迁移学习
+        self.experience_library = {
+            "core_general": {
+                "steady_change_rule": steady_change_threshold,
+                "trend_judge_rule": trend_window,
+                "causal_judge_logic": True,
+                "explore_steady_balance": explore_rate,
+                "action_relative_effect": {}
+            },
+            "env_specific": {}
+        }
+        self.is_in_new_env = False
+        self.env_switch_threshold = 5.0
+        self.migrated = False
+
+        # Level10 自然语言交互核心
+        self.language_config = {
+            "dim_name_map": {"temp": "温度", "pos": "位置", "humi": "湿度"},
+            "action_type_map": {
+                "maintain": "维稳", "explore": "探索", "emergency": "紧急处理", "idle": "待机"
+            }
+        }
+
+    # 自然语言指令解析
+    def parse_command(self, command: str):
+        command = command.lower()
+        response = ""
+        # 目标设定
+        if "目标" in command or "设为" in command:
+            for dim, name in self.language_config["dim_name_map"].items():
+                if name in command:
+                    num_str = ''.join([c for c in command if c.isdigit() or c == '.'])
+                    if num_str:
+                        target_val = float(num_str)
+                        self.manual_targets[dim] = target_val
+                        response += f"已将{name}目标设为{target_val}，已生效。\n"
+        # 探索频率调整
+        if "探索" in command and ("频率" in command or "%" in command):
+            num_str = ''.join([c for c in command if c.isdigit()])
+            if num_str:
+                rate = int(num_str) / 100
+                self.explore_rate = max(0.05, min(0.8, rate))
+                response += f"已将探索频率设为{int(rate*100)}%，已生效。\n"
+        # 状态查询
+        if "状态" in command or "情况" in command:
+            response += self.generate_status_report() + "\n"
+        # 经验总结
+        if "经验" in command or "规律" in command or "总结" in command:
+            response += self.generate_experience_summary() + "\n"
+        # 重置
+        if "重置" in command:
+            self.__init__(agent_id=self.agent_id, responsible_dims=self.responsible_dims)
+            response += "已重置智能体所有状态与参数，恢复初始设置。\n"
+        if not response:
+            response = "抱歉，我暂时无法理解该指令。你可以尝试：设定目标、查询状态、总结规律、调整探索频率、重置系统。"
+        return response.strip()
+
+    # 状态报告
+    def generate_status_report(self):
+        report = []
+        if self.is_steady_locked:
+            report.append(f"当前环境已锁定稳态，自主稳态目标为：{self.auto_steady_target}")
+        else:
+            report.append("当前环境未锁定稳态，正在观察学习中")
+        if self.prev_state:
+            report.append(f"当前环境状态：{self.prev_state}，总变化量：{sum(self.last_deltas.values()):.2f}")
+        report.append(f"当前执行动作：{self.last_action}，连续稳态步数：{self.consecutive_steady_step}")
+        if self.is_in_new_env:
+            report.append("检测到进入全新环境，已完成经验迁移")
+        return "；".join(report)
+
+    # 经验总结
+    def generate_experience_summary(self):
+        summary = []
+        if not self.is_steady_locked:
+            return "尚未锁定稳态，暂无可总结的环境规律。"
+        summary.append("【环境规律总结】")
+        for dim, name in self.language_config["dim_name_map"].items():
+            if dim in self.world_model["dim_range"]:
+                min_val, max_val = self.world_model["dim_range"][dim]
+                summary.append(f"- {name}波动范围：{min_val:.2f} ~ {max_val:.2f}，稳态值：{self.auto_steady_target[dim]:.2f}")
+        summary.append("\n【可控度总结】")
+        for dim, name in self.language_config["dim_name_map"].items():
+            if dim in self.world_model["controllability"]:
+                controllability = self.world_model["controllability"][dim]
+                level = "完全可控" if controllability >= 0.9 else "基本可控" if controllability >= 0.6 else "待探索"
+                summary.append(f"- {name}：{level}，可控度{controllability:.2f}")
+        summary.append("\n【动作效果总结】")
+        for dim, name in self.language_config["dim_name_map"].items():
+            if dim in self.world_model["action_effect"]:
+                up_effect = self.world_model["action_effect"][dim]["up"]
+                down_effect = self.world_model["action_effect"][dim]["down"]
+                if up_effect != 0 or down_effect != 0:
+                    summary.append(f"- 上调{name}，平均每步变化+{up_effect:.2f}；下调{name}，平均每步变化{down_effect:.2f}")
+        return "\n".join(summary)
+
+    # 决策解释
+    def generate_action_explain(self, action: str, is_abnormal: bool):
+        if is_abnormal:
+            return f"检测到环境发生异常剧变，优先执行紧急调整，保障系统稳态。"
+        if "提前干预" in action:
+            return f"检测到对应维度出现持续偏离趋势，提前干预，避免后续超出稳态范围。"
+        if "紧急调整" in action:
+            return f"对应维度偏离目标超过阈值，执行紧急调整，快速回归目标范围。"
+        if "微调" in action:
+            return f"对应维度轻微偏离目标，执行微调，维持稳态。"
+        if "主动探索" in action:
+            return f"当前环境稳定安全，主动探索未知维度，完善世界模型。"
+        return f"当前环境平稳，维持现有状态，持续观察变化。"
